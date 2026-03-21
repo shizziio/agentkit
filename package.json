@@ -1,0 +1,54 @@
+{
+  "name": "@shizziio/agent-kit",
+  "version": "0.1.0",
+  "description": "@shizziio/agent-kit — AI Pipeline Orchestrator",
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/shizziio1999/agentkit.git"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist/",
+    "README.md"
+  ],
+  "bin": {
+    "agentkit": "./dist/cli/index.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.src.json && tsc-alias -p tsconfig.src.json && chmod +x dist/cli/index.js && npm run copy-migrations && npm run copy-resources",
+    "copy-migrations": "mkdir -p dist/core/db && cp -r src/core/db/migrations dist/core/db/",
+    "copy-resources": "mkdir -p dist && cp -r src/resources dist/",
+    "reinstall": "npm run build && npm install -g . --force",
+    "prepublishOnly": "npm run build",
+    "dev": "tsx src/cli/index.ts",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@inkjs/ui": "^2.0.0",
+    "better-sqlite3": "^11.0.0",
+    "chalk": "^5.6.2",
+    "commander": "^12.0.0",
+    "drizzle-orm": "^0.36.0",
+    "ink": "^5.0.1",
+    "react": "^18.3.1",
+    "zustand": "^5.0.12"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/node": "^22.0.0",
+    "@types/react": "^18.3.0",
+    "drizzle-kit": "^0.30.0",
+    "tsc-alias": "^1.8.10",
+    "tsx": "^4.0.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  }
+}

@@ -1,0 +1,13 @@
+node_modules/
+dist/
+scripts/
+_pipeline/
+test-output.log
+test-results.json
+test-run.log
+_agent_kit/.outputs/
+pipekit/
+*.tsbuildinfo
+.DS_Store
+_agentkit-output/
+_agent_kit/
