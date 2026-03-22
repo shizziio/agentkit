@@ -40,6 +40,7 @@ epic_status:
   epic_35_setup_readiness: completed
   epic_36_master_agent_planning_ask: completed
   epic_37_custom_rules: completed
+  epic_38_agent_team_stage_provider: planned
 ---
 
 # Project Context — Document Index
@@ -181,6 +182,7 @@ Epics 1-22, 30-36 completed. Epics 23-29 in progress.
 | 35 | Project Setup Readiness | ✅ | ReadinessChecker (docs/team/epics), InteractiveSession utility (reusable provider spawn), SetupMenu UI, `agentkit setup` command, readiness gate in `agentkit start`, team auto-suggestion in create-team workflow |
 | 36 | Master Agent + Planning & Ask Menus | ✅ | agent-kit-master agent (Atlas), `agentkit planning` + `agentkit ask` CLI commands, dashboard Create Planning + Ask AgentKit menu items with worker-running check |
 | 37 | Custom Rules | ✅ | RulesService (scan/load/toggle), rule files in `_agentkit-output/rules/*.md`, enabled state in config, prompt injection via buildRulesSection, dashboard Custom Rules [U] toggle panel |
+| 38 | Agent Team Stage Provider | 📋 | AgentTeamConfig on StageConfig, buildTeamLeadSection prompt, ProcessManager slot reservation, env injection, dashboard team badges, timeout multiplier |
 
 ---
 

@@ -68,11 +68,10 @@ function makeStream(): { stream: NodeJS.WriteStream & { columns: number }; getOu
 
 const tick = (ms = 30): Promise<void> => new Promise((resolve) => { setTimeout(resolve, ms); });
 
-// After story 25.4: CompactLayout no longer accepts focusedPanel as a prop.
-// It reads focusedPanel from useDashboardStore(s => s.focusedPanel) directly.
-// Tests seed focusedPanel via useDashboardStore.setState.
+// focusedPanel is a required prop on CompactLayout (passed from DashboardApp).
 function makeProps(overrides: Partial<Parameters<typeof CompactLayout>[0]> = {}): Parameters<typeof CompactLayout>[0] {
   return {
+    focusedPanel: 0,
     focusModePanel: null,
     dimmed: false,
     ...overrides,
@@ -171,18 +170,14 @@ describe('CompactLayout', () => {
   });
 
   // -------------------------------------------------------------------------
-  // Story 25.4: focusedPanel comes from the store, not from props.
-  // CompactLayoutProps should NOT include focusedPanel; it reads from store.
-  // These tests FAIL before implementation (CompactLayout reads from props,
-  // which is undefined when not passed → isFocused always false).
-  // PASS after implementation (CompactLayout reads from useDashboardStore).
+  // focusedPanel is passed as a prop from DashboardApp.
+  // isFocused for child panels is derived from this prop.
   // -------------------------------------------------------------------------
 
-  describe('isFocused driven by store (story 25.4)', () => {
-    it('passes isFocused=true to ActiveStoriesPanel when store focusedPanel=0', async () => {
-      useDashboardStore.setState({ focusedPanel: 0, panelCount: 2 });
+  describe('isFocused driven by focusedPanel prop', () => {
+    it('passes isFocused=true to ActiveStoriesPanel when focusedPanel=0', async () => {
       const { stream } = makeStream();
-      const result = render(React.createElement(CompactLayout, makeProps()), { stdout: stream });
+      const result = render(React.createElement(CompactLayout, makeProps({ focusedPanel: 0 })), { stdout: stream });
       await tick();
       expect(vi.mocked(ActiveStoriesPanel)).toHaveBeenCalledWith(
         expect.objectContaining({ isFocused: true }),
@@ -191,10 +186,9 @@ describe('CompactLayout', () => {
       result.unmount();
     });
 
-    it('passes isFocused=false to ActiveStoriesPanel when store focusedPanel=1', async () => {
-      useDashboardStore.setState({ focusedPanel: 1, panelCount: 2 });
+    it('passes isFocused=false to ActiveStoriesPanel when focusedPanel=1', async () => {
       const { stream } = makeStream();
-      const result = render(React.createElement(CompactLayout, makeProps()), { stdout: stream });
+      const result = render(React.createElement(CompactLayout, makeProps({ focusedPanel: 1 })), { stdout: stream });
       await tick();
       expect(vi.mocked(ActiveStoriesPanel)).toHaveBeenCalledWith(
         expect.objectContaining({ isFocused: false }),
@@ -203,10 +197,9 @@ describe('CompactLayout', () => {
       result.unmount();
     });
 
-    it('passes isFocused=true to LiveActivityPanel when store focusedPanel=1', async () => {
-      useDashboardStore.setState({ focusedPanel: 1, panelCount: 2 });
+    it('passes isFocused=true to LiveActivityPanel when focusedPanel=1', async () => {
       const { stream } = makeStream();
-      const result = render(React.createElement(CompactLayout, makeProps()), { stdout: stream });
+      const result = render(React.createElement(CompactLayout, makeProps({ focusedPanel: 1 })), { stdout: stream });
       await tick();
       expect(vi.mocked(LiveActivityPanel)).toHaveBeenCalledWith(
         expect.objectContaining({ isFocused: true }),
@@ -215,10 +208,9 @@ describe('CompactLayout', () => {
       result.unmount();
     });
 
-    it('passes isFocused=false to LiveActivityPanel when store focusedPanel=0', async () => {
-      useDashboardStore.setState({ focusedPanel: 0, panelCount: 2 });
+    it('passes isFocused=false to LiveActivityPanel when focusedPanel=0', async () => {
       const { stream } = makeStream();
-      const result = render(React.createElement(CompactLayout, makeProps()), { stdout: stream });
+      const result = render(React.createElement(CompactLayout, makeProps({ focusedPanel: 0 })), { stdout: stream });
       await tick();
       expect(vi.mocked(LiveActivityPanel)).toHaveBeenCalledWith(
         expect.objectContaining({ isFocused: false }),
@@ -227,12 +219,9 @@ describe('CompactLayout', () => {
       result.unmount();
     });
 
-    it('CompactLayoutProps should NOT include a focusedPanel field (verified by omitting from makeProps)', async () => {
-      // makeProps() does NOT include focusedPanel. If CompactLayout still requires it,
-      // TypeScript will error at compile time. After migration, focusedPanel comes
-      // from the store so no prop is needed.
+    it('CompactLayoutProps includes focusedPanel field', async () => {
       const props = makeProps();
-      expect((props as Record<string, unknown>).focusedPanel).toBeUndefined();
+      expect((props as Record<string, unknown>).focusedPanel).toBe(0);
     });
   });
 });

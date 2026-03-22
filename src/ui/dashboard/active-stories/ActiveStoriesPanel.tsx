@@ -1,8 +1,9 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { Box, Text, useInput } from 'ink'
 
 import { useStoriesStore } from '@ui/stores/storiesStore.js'
 import { useAppStore } from '@ui/stores/appStore.js'
+import { useDashboardStore } from '@ui/stores/dashboardStore.js'
 import {
   truncate,
   getStatusColor as getStatusColorShared,
@@ -60,10 +61,11 @@ function getDuration(entry: ActiveStoryEntry, now: number): string {
 }
 
 interface ActiveStoriesPanelProps {
-  isFocused: boolean
+  isFocused?: boolean  // ignored — reads from dashboardStore
   dimmed?: boolean
   width?: number
   height?: number
+  panelIndex?: number
 }
 
 function formatDeps(dependsOn: string[], depStatuses: Record<string, string>): string {
@@ -73,18 +75,52 @@ function formatDeps(dependsOn: string[], depStatuses: Record<string, string>): s
   return badges.slice(0, 2).join(' ') + ' +' + (badges.length - 2)
 }
 
+/**
+ * Local duration tick — only ticks when there are running stories.
+ * Returns a `now` timestamp that updates every 3s while running.
+ * When no stories are running, returns a static Date.now() (no timer).
+ */
+function useDurationTick(entries: ActiveStoryEntry[]): number {
+  const [now, setNow] = useState(() => Date.now())
+  const hasRunning = entries.some(e => e.displayStatus === 'RUN')
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  useEffect(() => {
+    if (hasRunning) {
+      setNow(Date.now())
+      intervalRef.current = setInterval(() => {
+        setNow(Date.now())
+      }, 3000)
+    } else {
+      if (intervalRef.current !== null) {
+        clearInterval(intervalRef.current)
+        intervalRef.current = null
+      }
+    }
+    return () => {
+      if (intervalRef.current !== null) {
+        clearInterval(intervalRef.current)
+        intervalRef.current = null
+      }
+    }
+  }, [hasRunning])
+
+  return now
+}
+
 function ActiveStoriesPanelInner({
-  isFocused,
   dimmed = false,
   width,
   height: _height,
+  panelIndex = 1,
 }: ActiveStoriesPanelProps): React.JSX.Element {
+  const isFocused = useDashboardStore(s => s.focusedPanel === panelIndex)
   const safeWidth = (width !== undefined && width > 0) ? width : 50
   const entries = useStoriesStore(s => s.entries)
   const summary = useStoriesStore(s => s.summary)
   const projectConfig = useAppStore(s => s.projectConfig)
   const isMultiTeam = (projectConfig?.activeTeams?.length ?? 0) > 1
-  const now = Date.now()
+  const now = useDurationTick(entries)
   const [scrollIndex, setScrollIndex] = useState(0)
 
   // Hard cap: show max 5 rows at a time with pagination scroll
@@ -154,7 +190,7 @@ function ActiveStoriesPanelInner({
       <Text color="gray" dimColor={dimmed} wrap="truncate">{'─'.repeat(Math.max(0, safeWidth - 2))}</Text>
 
       {/* Data rows */}
-      <Box flexDirection="column" overflow="hidden">
+      <Box flexDirection="column" overflow="hidden" flexGrow={1} flexShrink={1}>
         {visibleEntries.length === 0 ? (
           <Text color="gray" dimColor={dimmed} wrap="truncate">No active stories</Text>
         ) : (

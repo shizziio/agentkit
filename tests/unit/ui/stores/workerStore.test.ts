@@ -123,8 +123,8 @@ describe('useWorkerStore', () => {
       expect(getState().isPipelineRunning()).toBe(false);
     });
 
-    it('queueStats() returns null initially (pipeline stopped)', () => {
-      expect(getState().queueStats()).toBeNull();
+    it('queueStats returns null initially (pipeline stopped)', () => {
+      expect(getState().queueStats).toBeNull();
     });
   });
 
@@ -151,20 +151,27 @@ describe('useWorkerStore', () => {
     });
 
     it('updates an existing worker entry to run status', () => {
+      vi.useFakeTimers();
       eventBus.emit('worker:idle', makeWorkerEvent('sm-worker'));
       expect(getState().workerStatuses[0]?.status).toBe('idle');
+      vi.advanceTimersByTime(250);
       eventBus.emit('worker:busy', makeWorkerEvent('sm-worker'));
       expect(getState().workerStatuses).toHaveLength(1);
       expect(getState().workerStatuses[0]?.status).toBe('run');
+      vi.useRealTimers();
     });
 
     it('tracks multiple distinct workers independently', () => {
+      vi.useFakeTimers();
       eventBus.emit('worker:busy', makeWorkerEvent('sm-worker'));
+      vi.advanceTimersByTime(250);
       eventBus.emit('worker:busy', makeWorkerEvent('dev-worker'));
+      vi.advanceTimersByTime(250);
       eventBus.emit('worker:busy', makeWorkerEvent('review-worker'));
       const statuses = getState().workerStatuses;
       expect(statuses).toHaveLength(3);
       expect(statuses.every((w) => w.status === 'run')).toBe(true);
+      vi.useRealTimers();
     });
 
     it('sets pipelineState to running when pipeline is stopped', () => {
@@ -190,11 +197,14 @@ describe('useWorkerStore', () => {
     });
 
     it('marks an existing worker as idle with runStartedAt null', () => {
+      vi.useFakeTimers();
       eventBus.emit('worker:busy', makeWorkerEvent('dev-worker'));
       expect(getState().workerStatuses[0]?.status).toBe('run');
+      vi.advanceTimersByTime(250);
       eventBus.emit('worker:idle', makeWorkerEvent('dev-worker'));
       expect(getState().workerStatuses[0]?.status).toBe('idle');
       expect(getState().workerStatuses[0]?.runStartedAt).toBeNull();
+      vi.useRealTimers();
     });
 
     it('creates a new idle entry for an unknown stage', () => {
@@ -311,43 +321,54 @@ describe('useWorkerStore', () => {
     });
 
     it('updates queueStats when pipeline is running', () => {
+      vi.useFakeTimers();
       eventBus.emit('pipeline:start', makePipelineEvent());
+      vi.advanceTimersByTime(250);
       eventBus.emit('queue:updated', makeQueueEvent(5, 3, 1));
-      expect(getState().queueStats()).toEqual({ done: 5, queued: 3, failed: 1 });
+      expect(getState().queueStats).toEqual({ done: 5, queued: 3, failed: 1 });
+      vi.useRealTimers();
     });
 
-    it('returns null from queueStats() when pipelineState is stopped', () => {
-      // Emit queue update without starting pipeline
+    it('returns null from queueStats when pipelineState is stopped', () => {
+      // Emit queue update without starting pipeline — queueStats stays null
       eventBus.emit('queue:updated', makeQueueEvent(5, 3, 1));
-      expect(getState().queueStats()).toBeNull();
+      expect(getState().queueStats).toBeNull();
     });
 
     it('hides queueStats after pipeline stops', () => {
+      vi.useFakeTimers();
       eventBus.emit('pipeline:start', makePipelineEvent());
+      vi.advanceTimersByTime(250);
       eventBus.emit('queue:updated', makeQueueEvent(5, 3, 1));
-      expect(getState().queueStats()).not.toBeNull();
+      expect(getState().queueStats).not.toBeNull();
       eventBus.emit('pipeline:stop', makePipelineEvent());
-      expect(getState().queueStats()).toBeNull();
+      expect(getState().queueStats).toBeNull();
+      vi.useRealTimers();
     });
 
     it('maps event fields correctly: pending→queued, completed→done, failed→failed', () => {
+      vi.useFakeTimers();
       eventBus.emit('pipeline:start', makePipelineEvent());
+      vi.advanceTimersByTime(250);
       eventBus.emit('queue:updated', makeQueueEvent(7, 2, 3));
-      const stats = getState().queueStats();
+      const stats = getState().queueStats;
       expect(stats).not.toBeNull();
       expect(stats?.done).toBe(7);
       expect(stats?.queued).toBe(2);
       expect(stats?.failed).toBe(3);
+      vi.useRealTimers();
     });
 
-    it('queueStats() reads buffered value directly (not from Zustand state)', () => {
-      // Verify queueStats() always returns the latest buffered value
+    it('queueStats is updated as Zustand state after flush', () => {
+      vi.useFakeTimers();
       eventBus.emit('pipeline:start', makePipelineEvent());
+      vi.advanceTimersByTime(250);
       eventBus.emit('queue:updated', { pending: 10, running: 0, completed: 20, failed: 2 });
-      const stats = getState().queueStats();
+      const stats = getState().queueStats;
       expect(stats?.queued).toBe(10);
       expect(stats?.done).toBe(20);
       expect(stats?.failed).toBe(2);
+      vi.useRealTimers();
     });
   });
 

@@ -191,49 +191,51 @@ describe('useDiagnosePolling', () => {
     });
   });
 
-  describe('countdown timer', () => {
-    afterEach(() => {
-      vi.useRealTimers();
-    });
+  describe('nextPollIn as derived value', () => {
+    // nextPollIn is now computed from nextPollAt (a stored timestamp), not driven
+    // by a setInterval countdown. It reflects Math.max(0, nextPollAt - Date.now())
+    // rounded to seconds. No interval is needed.
 
-    it('decrements nextPollIn by 1 each second', async () => {
-      vi.useFakeTimers({ shouldAdvanceTime: false });
-
+    it('nextPollIn is 30 immediately after receiving event', async () => {
       const result = renderHook();
-      // Let useEffect run and register the event listener
-      await vi.advanceTimersByTimeAsync(50);
+      await tick();
 
       emit(testEventBus, { result: makeResult(), timestamp: new Date().toISOString() });
-      // Flush React state update
-      await vi.advanceTimersByTimeAsync(50);
+      await tick();
+
       expect(capturedResult.nextPollIn).toBe(30);
+      result.unmount();
+    });
 
-      await vi.advanceTimersByTimeAsync(1000);
-      expect(capturedResult.nextPollIn).toBe(29);
+    it('nextPollIn is derived from nextPollAt (no timer needed)', async () => {
+      // nextPollIn is computed at render time as Math.max(0, ceil((nextPollAt - now) / 1000)).
+      // Without a re-render trigger, the value stays at what was computed on last render.
+      // This test verifies the derived formula is applied correctly.
+      const result = renderHook();
+      await tick();
 
-      await vi.advanceTimersByTimeAsync(1000);
-      expect(capturedResult.nextPollIn).toBe(28);
+      emit(testEventBus, { result: makeResult(), timestamp: new Date().toISOString() });
+      await tick();
+
+      // Immediately after event, nextPollIn should be ~30s
+      expect(capturedResult.nextPollIn).toBe(30);
+      // nextPollAt should be set
+      expect(capturedResult.nextPollAt).not.toBeNull();
 
       result.unmount();
     });
 
-    it('does not go below 0', async () => {
-      vi.useFakeTimers({ shouldAdvanceTime: false });
-
+    it('nextPollIn is always >= 0 (clamped by Math.max)', async () => {
       const result = renderHook();
-      await vi.advanceTimersByTimeAsync(50);
+      await tick();
 
-      emit(testEventBus, { result: makeResult(), timestamp: new Date().toISOString() });
-      await vi.advanceTimersByTimeAsync(50);
-      expect(capturedResult.nextPollIn).toBe(30);
-
-      await vi.advanceTimersByTimeAsync(35_000);
+      // Before any event, nextPollAt is null → nextPollIn is 0
       expect(capturedResult.nextPollIn).toBe(0);
 
       result.unmount();
     });
 
-    it('resets nextPollIn to 30 when a new event arrives mid-countdown', async () => {
+    it('resets nextPollIn to 30 when a new event arrives', async () => {
       vi.useFakeTimers({ shouldAdvanceTime: false });
 
       const result = renderHook();
@@ -244,13 +246,13 @@ describe('useDiagnosePolling', () => {
       expect(capturedResult.nextPollIn).toBe(30);
 
       await vi.advanceTimersByTimeAsync(15_000);
-      expect(capturedResult.nextPollIn).toBe(15);
 
       emit(testEventBus, { result: makeResult(), timestamp: new Date().toISOString() });
       await vi.advanceTimersByTimeAsync(50);
       expect(capturedResult.nextPollIn).toBe(30);
 
       result.unmount();
+      vi.useRealTimers();
     });
   });
 

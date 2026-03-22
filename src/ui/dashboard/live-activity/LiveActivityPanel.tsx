@@ -3,23 +3,26 @@ import { Box, Text, useInput } from 'ink';
 
 import { ACTIVITY_VISIBLE_ROWS } from '@config/defaults.js';
 import { useActivityStore } from '@stores/activityStore.js';
+import { useDashboardStore } from '@ui/stores/dashboardStore.js';
 import { CompletionCard } from './CompletionCard.js';
 
 interface LiveActivityPanelProps {
-  isFocused: boolean;
-  isFullscreen: boolean;
+  isFocused?: boolean;  // ignored — reads from dashboardStore
+  isFullscreen?: boolean;
   dimmed?: boolean;
   width?: number;
   height?: number;
+  panelIndex?: number;
 }
 
 function LiveActivityPanelInner({
-  isFocused,
-  isFullscreen,
+  isFullscreen = false,
   dimmed = false,
   width: _width,
   height,
+  panelIndex = 2,
 }: LiveActivityPanelProps): React.JSX.Element {
+  const isFocused = useDashboardStore(s => s.focusedPanel === panelIndex);
   const events = useActivityStore((s) => s.events);
   const scrollIndex = useActivityStore((s) => s.scrollIndex);
   const isFollowing = useActivityStore((s) => s.isFollowing);

@@ -387,11 +387,8 @@ const _store = create<StoriesStore>()(
       eventBus.on('task:completed', _onCompleted);
       eventBus.on('task:failed', _onFailed);
 
-      // 3s tick interval: force entries reference update so consumers re-render
-      // running durations without needing separate state
-      _tickInterval = setInterval(() => {
-        set({ entries: sortedEntries() });
-      }, 3000);
+      // No tick interval — duration is computed at render time in ActiveStoriesPanel.
+      // The panel uses its own local tick to update the clock.
     },
 
     cleanup(): void {

@@ -236,14 +236,15 @@ describe('useStoriesStore', () => {
       expect(offSpy).toHaveBeenCalledTimes(5);
     });
 
-    it('starts tick interval on init', () => {
+    it('does not start a tick interval (duration computed at render time)', () => {
       vi.useFakeTimers();
       const setIntervalSpy = vi.spyOn(globalThis, 'setInterval');
       const db = makeMockDb();
 
       getState().init(eventBus, db as Parameters<typeof getState>['db']);
 
-      expect(setIntervalSpy).toHaveBeenCalled();
+      // No tick interval — duration display is handled by the component
+      expect(setIntervalSpy).not.toHaveBeenCalled();
       vi.useRealTimers();
     });
   });
@@ -1050,34 +1051,10 @@ describe('useStoriesStore', () => {
   });
 
   // -------------------------------------------------------------------------
-  // Tick interval
+  // Tick interval (removed — duration computed at render time)
   // -------------------------------------------------------------------------
-  describe('3s tick interval', () => {
-    it('fires at 3000ms interval', () => {
-      vi.useFakeTimers();
-      const db = makeMockDb();
-      getState().init(eventBus, db as Parameters<typeof getState>['db']);
-
-      // Add a running entry
-      eventBus.emit('task:started', makeTaskEvent({ storyId: 7000, taskId: 1 }));
-
-      let subscribeCallCount = 0;
-      const unsub = useStoriesStore.subscribe(
-        (s) => s.entries,
-        () => { subscribeCallCount++; },
-      );
-
-      vi.advanceTimersByTime(3001);
-
-      // Tick must have triggered at least one state update so consumers re-render
-      // for updated running durations (AC: "tick forces state update").
-      expect(subscribeCallCount).toBeGreaterThan(0);
-
-      unsub();
-      vi.useRealTimers();
-    });
-
-    it('tick interval is a setInterval call at 3000ms', () => {
+  describe('no tick interval', () => {
+    it('does not create a setInterval for duration updates', () => {
       vi.useFakeTimers();
       const setIntervalSpy = vi.spyOn(globalThis, 'setInterval');
       const db = makeMockDb();
@@ -1085,7 +1062,7 @@ describe('useStoriesStore', () => {
       getState().init(eventBus, db as Parameters<typeof getState>['db']);
 
       const tickCall = setIntervalSpy.mock.calls.find((call) => Number(call[1]) === 3000);
-      expect(tickCall).toBeDefined();
+      expect(tickCall).toBeUndefined();
 
       vi.useRealTimers();
     });
@@ -1109,16 +1086,10 @@ describe('useStoriesStore', () => {
       expect(events).toContain('task:failed');
     });
 
-    it('clears tick interval on cleanup', () => {
-      vi.useFakeTimers();
-      const clearIntervalSpy = vi.spyOn(globalThis, 'clearInterval');
-
+    it('cleanup is safe when no tick interval exists', () => {
       getState().init(eventBus, makeMockDb() as Parameters<typeof getState>['db']);
-      getState().cleanup();
-
-      expect(clearIntervalSpy).toHaveBeenCalled();
-      clearIntervalSpy.mockRestore();
-      vi.useRealTimers();
+      // Should not throw even though no tick interval was created
+      expect(() => getState().cleanup()).not.toThrow();
     });
 
     it('store does NOT update after cleanup() when events are emitted', () => {

@@ -629,15 +629,16 @@ describe('useActivityStore', () => {
   // Throttle behaviour
   // -------------------------------------------------------------------------
   describe('throttle behaviour', () => {
-    it('multiple events emitted within throttle window are all committed after 1s interval flush', () => {
-      vi.useFakeTimers(); // t=0; _lastFlush=0 → 0-0 < 500 → queued but not immediately applied
+    it('multiple events emitted within throttle window are all committed after flush interval', () => {
+      vi.useFakeTimers();
       getState().init(eventBus);
 
-      eventBus.emit('stream:text', makeStreamEvent('text', { data: { text: 'msg-1' } }));
-      eventBus.emit('stream:text', makeStreamEvent('text', { data: { text: 'msg-2' } }));
-      eventBus.emit('stream:text', makeStreamEvent('text', { data: { text: 'msg-3' } }));
+      // Use different event types to avoid text merging
+      eventBus.emit('stream:tool_use', makeStreamEvent('tool_use', { data: { toolName: 'Read', toolInput: { file_path: 'a.ts' } } }));
+      eventBus.emit('stream:tool_use', makeStreamEvent('tool_use', { data: { toolName: 'Edit', toolInput: { file_path: 'b.ts' } } }));
+      eventBus.emit('stream:tool_use', makeStreamEvent('tool_use', { data: { toolName: 'Bash', toolInput: { command: 'ls' } } }));
 
-      // Advance past the 1s flush interval — all pending events must be committed
+      // Advance past the flush interval — all pending events must be committed
       vi.advanceTimersByTime(1000);
       expect(getState().events).toHaveLength(3);
       vi.useRealTimers();

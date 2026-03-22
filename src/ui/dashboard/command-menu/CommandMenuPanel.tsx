@@ -1,12 +1,11 @@
 import React, { useState, useEffect } from 'react'
 import { Box, Text, useInput } from 'ink'
 
-import type { QueueStats } from '@ui/stores/workerStore.js'
-import type { UseMenuStack } from '../hooks/useMenuStack.js'
+import { useWorkerStore } from '@ui/stores/workerStore.js'
+import { useDashboardStore } from '@ui/stores/dashboardStore.js'
+import { useMenuStore } from '@ui/stores/menuStore.js'
+import { handleMenuAction } from '@ui/stores/menuActions.js'
 import type { MenuItem, MenuLevel } from './MenuTypes.js'
-
-import { ChatPanel } from '@ui/chat/ChatPanel.js'
-import type { ActionMode } from '../shared/DashboardTypes.js'
 
 const MENUS: Record<MenuLevel, MenuItem[]> = {
   main: [
@@ -49,30 +48,23 @@ function isMenuLevel(action: string): action is MenuLevel {
 }
 
 export interface CommandMenuPanelProps {
-  isFocused?: boolean
-  onSelectAction: (action: string) => void
-  isActionActive?: boolean
-  actionMode?: ActionMode
-  isPipelineRunning?: boolean
-  queueStats?: QueueStats | null
-  menuStack: UseMenuStack
   width?: number
   height?: number
 }
 
 function CommandMenuPanelInner({
-  isFocused = false,
-  onSelectAction,
-  isActionActive = false,
-  actionMode = 'none',
-  isPipelineRunning = false,
-  queueStats = null,
-  menuStack,
-  width,
+  width: _width,
   height,
 }: CommandMenuPanelProps): React.JSX.Element {
+  // Subscribe only to what this component renders
+  const pipelineState = useWorkerStore(s => s.pipelineState)
+  const queueStats = useWorkerStore(s => s.queueStats)
+  const isFocused = useDashboardStore(s => s.focusedPanel === 0)
+  const isActionActive = useDashboardStore(s => s.actionMode !== 'none')
+  const currentLevel = useMenuStore(s => s.currentLevel)
+
+  const isPipelineRunning = pipelineState === 'running'
   const [cursor, setCursor] = useState(0)
-  const { currentLevel, push, handleQ } = menuStack
 
   // Dynamic menu: replace run-pipeline item based on pipeline state
   const menuItems = (MENUS[currentLevel] || []).flatMap(item => {
@@ -91,9 +83,8 @@ function CommandMenuPanelInner({
 
   useInput(
     (input, key) => {
-      if (actionMode === 'ask-agent') return;
-
       const lower = input.toLowerCase()
+      const { push, handleQ } = useMenuStore.getState()
 
       if (lower === 'q') {
         handleQ()
@@ -105,11 +96,9 @@ function CommandMenuPanelInner({
         const item = menuItems.find(it => it.hotkey?.toLowerCase() === lower)
         if (item) {
           if (item.isSubmenu) {
-            if (isMenuLevel(item.action)) {
-              push(item.action)
-            }
+            if (isMenuLevel(item.action)) push(item.action)
           } else {
-            onSelectAction(item.action)
+            handleMenuAction(item.action)
           }
           return
         }
@@ -123,29 +112,15 @@ function CommandMenuPanelInner({
         const item = menuItems[cursor]
         if (item) {
           if (item.isSubmenu) {
-            if (isMenuLevel(item.action)) {
-              push(item.action)
-            }
+            if (isMenuLevel(item.action)) push(item.action)
           } else {
-            onSelectAction(item.action)
+            handleMenuAction(item.action)
           }
         }
       }
     },
     { isActive: isFocused && !isActionActive },
   )
-
-  // Special case: Ask Agent opens a separate TUI session in the same panel
-  if (actionMode === 'ask-agent') {
-    return (
-      <ChatPanel
-        onExit={handleQ}
-        isFocused={isFocused}
-        width={width}
-        height={height}
-      />
-    )
-  }
 
   const pipelineSummary = isPipelineRunning
     ? `● Running  queued:${queueStats?.queued ?? 0}  done:${queueStats?.done ?? 0}  failed:${queueStats?.failed ?? 0}`
@@ -186,4 +161,4 @@ function CommandMenuPanelInner({
   )
 }
 
-export const CommandMenuPanel = React.memo(CommandMenuPanelInner);
+export const CommandMenuPanel = React.memo(CommandMenuPanelInner)

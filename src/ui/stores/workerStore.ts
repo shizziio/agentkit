@@ -30,10 +30,10 @@ export function formatElapsed(runStartedAt: number | null): string {
 export interface WorkerStore {
   workerStatuses: WorkerStatusEntry[];
   pipelineState: PipelineState;
+  queueStats: QueueStats | null;
   init: (eventBus: EventBus) => void;
   cleanup: () => void;
   isPipelineRunning: () => boolean;
-  queueStats: () => QueueStats | null;
 }
 
 // Module-level closure variables — NOT React refs
@@ -55,27 +55,40 @@ let _onQueueUpdated: ((e: QueueEvent) => void) | null = null;
 
 const THROTTLE_MS = 250;
 
+function queueStatsEqual(a: QueueStats | null, b: QueueStats | null): boolean {
+  if (a === b) return true;
+  if (a === null || b === null) return false;
+  return a.done === b.done && a.queued === b.queued && a.failed === b.failed;
+}
+
 const _store = create<WorkerStore>()(
-  subscribeWithSelector((set) => ({
+  subscribeWithSelector((set, get) => ({
     workerStatuses: [],
     pipelineState: 'stopped',
+    queueStats: null,
 
     isPipelineRunning: (): boolean => {
-      return _store.getState().pipelineState === 'running';
-    },
-
-    queueStats: (): QueueStats | null => {
-      return _store.getState().pipelineState !== 'stopped' ? _rawQueueStatsBuf : null;
+      return get().pipelineState === 'running';
     },
 
     init: (eventBus: EventBus): void => {
-      _store.getState().cleanup();
+      get().cleanup();
+
+      const computeQueueStats = (): QueueStats | null => {
+        return get().pipelineState !== 'stopped' ? _rawQueueStatsBuf : null;
+      };
 
       const flushUpdates = (): void => {
         if (!_dirty) return;
         const now = Date.now();
         if (now - _lastUpdate >= THROTTLE_MS) {
-          set({ workerStatuses: [..._workerStatusesBuf] });
+          const newQueueStats = computeQueueStats();
+          const prevQueueStats = get().queueStats;
+          const patch: Partial<WorkerStore> = { workerStatuses: [..._workerStatusesBuf] };
+          if (!queueStatsEqual(newQueueStats, prevQueueStats)) {
+            patch.queueStats = newQueueStats;
+          }
+          set(patch);
           _lastUpdate = now;
           _dirty = false;
         }
@@ -128,7 +141,7 @@ const _store = create<WorkerStore>()(
           status: 'idle' as const,
           runStartedAt: null,
         }));
-        set({ pipelineState: 'stopped', workerStatuses: [..._workerStatusesBuf] });
+        set({ pipelineState: 'stopped', workerStatuses: [..._workerStatusesBuf], queueStats: null });
       };
 
       _onPipelineTerminated = (_event: PipelineEvent): void => {
@@ -137,7 +150,7 @@ const _store = create<WorkerStore>()(
           status: 'idle' as const,
           runStartedAt: null,
         }));
-        set({ pipelineState: 'stopped', workerStatuses: [..._workerStatusesBuf] });
+        set({ pipelineState: 'stopped', workerStatuses: [..._workerStatusesBuf], queueStats: null });
       };
 
       _onQueueUpdated = (event: QueueEvent): void => {
@@ -198,15 +211,6 @@ const _origSetState = _store.setState;
 _store.setState = (partial, _replace) => {
   const resolved = typeof partial === 'function' ? partial(_store.getState()) : partial;
   _origSetState(resolved);
-};
-
-// Override getState() so workerStatuses always reflects the live buffer.
-// This allows tests to read the latest buffer synchronously without waiting for
-// a throttled flush, while Zustand internal state (used by subscribe) remains throttled.
-const _origGetState = _store.getState;
-_store.getState = () => {
-  const state = _origGetState();
-  return { ...state, workerStatuses: _workerStatusesBuf };
 };
 
 export const useWorkerStore = _store;

@@ -16,6 +16,9 @@ import { requireInitialized } from './RequireInitialized.js';
 import { WorkerToggle } from './WorkerToggle.js';
 import { UnifiedApp } from '@ui/UnifiedApp.js';
 import { SetupMenu } from '@ui/setup/SetupMenu.js';
+import { useAppStore } from '@ui/stores/appStore.js';
+import { useAlertStore, useWorkerStore, useActivityStore } from '@ui/stores/index.js';
+import { useStoriesStore } from '@ui/stores/storiesStore.js';
 
 import { TraceService } from '@core/TraceService.js';
 import { ResetService } from '@core/ResetService.js';
@@ -69,12 +72,40 @@ export function registerStartCommand(program: Command): void {
         }
 
         const agentkitDir = join(projectRoot, AGENTKIT_DIR);
-        const configLoader = new ConfigLoader(projectRoot);
+        let configLoader = new ConfigLoader(projectRoot);
 
-        // Check if a team is configured before trying to load pipeline config
+        // If no team configured, force setup menu (can't skip this)
         if (!configLoader.hasTeam()) {
-          process.stderr.write('No team configured yet. Run `agentkit setup` to create a team, or re-run `agentkit start` and select "Setup Team Config".\n');
-          process.exit(1);
+          let provider = 'claude-cli';
+          try { provider = configLoader.loadProjectConfig().provider; } catch { /* default */ }
+
+          const checker = new ReadinessChecker(projectRoot);
+          const readiness = checker.check();
+
+          process.stdout.write('No team configured yet. Please set up a team to continue.\n\n');
+
+          let setupDone: () => void;
+          const setupPromise = new Promise<void>(resolve => { setupDone = resolve; });
+
+          const setupApp = render(
+            React.createElement(SetupMenu, {
+              readiness,
+              provider,
+              onSkip: () => {
+                setupApp.unmount();
+                setupDone!();
+              },
+            }),
+          );
+
+          await setupPromise;
+
+          // Re-check after setup
+          configLoader = new ConfigLoader(projectRoot);
+          if (!configLoader.hasTeam()) {
+            process.stderr.write('No team configured. Cannot start dashboard without a team.\nRun `agentkit setup` to create a team.\n');
+            process.exit(1);
+          }
         }
 
         const pipelineConfig = configLoader.load();
@@ -115,25 +146,43 @@ export function registerStartCommand(program: Command): void {
         const loadService = new LoadService(db);
         const markdownParser = new MarkdownParser();
 
-        process.stdout.write('\x1Bc');
+        // Init all stores BEFORE render() — ensures first frame is complete.
+        // This prevents Ink from appending partial outputs during mount.
+        const dashboardProps = {
+          pipelineConfig,
+          projectId: project.id,
+          db,
+          eventBus,
+          traceService,
+          resetService,
+          markDoneService,
+          configService,
+          teamSwitchService,
+          diagnoseService,
+          loadService,
+          markdownParser,
+          onComplete: () => app.unmount(),
+          onToggleWorkers: () => workerToggle.toggle(),
+          onDrain: () => workerToggle.drain(),
+        };
+
+        // Pre-init stores synchronously — no React needed
+        useAppStore.getState().init(dashboardProps as Parameters<ReturnType<typeof useAppStore['getState']>['init']>[0]);
+        useAlertStore.getState().init(eventBus);
+        useWorkerStore.getState().init(eventBus);
+        useActivityStore.getState().init(eventBus);
+        useStoriesStore.getState().init(eventBus, db, pipelineConfig.team);
+        resetService.startListening();
+        markDoneService.startListening();
+
+        // Enter alternate screen buffer — standard for fullscreen TUI apps.
+        // Re-renders overwrite the entire screen, never scroll/stack.
+        process.stdout.write('\x1b[?1049h');  // enter alternate screen
+        process.stdout.write('\x1b[?25l');    // hide cursor
+        process.stdout.write('\x1b[H');       // move cursor to top-left
+
         const app = render(
-          React.createElement(UnifiedApp, {
-            pipelineConfig,
-            projectId: project.id,
-            db,
-            eventBus,
-            traceService,
-            resetService,
-            markDoneService,
-            configService,
-            teamSwitchService,
-            diagnoseService,
-            loadService,
-            markdownParser,
-            onComplete: () => app.unmount(),
-            onToggleWorkers: () => workerToggle.toggle(),
-            onDrain: () => workerToggle.drain(),
-          }),
+          React.createElement(UnifiedApp, dashboardProps),
         );
 
         setImmediate(() => {
@@ -148,7 +197,13 @@ export function registerStartCommand(program: Command): void {
         });
 
         await app.waitUntilExit();
+
+        // Leave alternate screen buffer — restore original terminal
+        process.stdout.write('\x1b[?25h');    // show cursor
+        process.stdout.write('\x1b[?1049l');  // leave alternate screen
       } catch (err: unknown) {
+        // Always restore terminal on error
+        process.stdout.write('\x1b[?25h\x1b[?1049l');
         if (err instanceof AgentKitError) {
           process.stderr.write(`Error: ${err.message}\n`);
           process.exit(1);

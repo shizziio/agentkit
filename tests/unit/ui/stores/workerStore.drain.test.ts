@@ -43,7 +43,7 @@ import { useWorkerStore } from '@stores/workerStore.js';
 // ---------------------------------------------------------------------------
 
 function resetStore(): void {
-  useWorkerStore.setState({ workerStatuses: [], pipelineState: 'stopped' }, true);
+  useWorkerStore.setState({ workerStatuses: [], pipelineState: 'stopped', queueStats: null }, true);
 }
 
 function getState() {
@@ -93,8 +93,8 @@ describe('useWorkerStore — pipelineState transitions (Story 26.2)', () => {
       expect(getState().isPipelineRunning()).toBe(false);
     });
 
-    it('queueStats() returns null initially', () => {
-      expect(getState().queueStats()).toBeNull();
+    it('queueStats returns null initially', () => {
+      expect(getState().queueStats).toBeNull();
     });
   });
 
@@ -205,13 +205,13 @@ describe('useWorkerStore — pipelineState transitions (Story 26.2)', () => {
   });
 
   // -------------------------------------------------------------------------
-  // AC: queueStats() visibility rules with pipelineState
+  // AC: queueStats visibility rules with pipelineState
   // -------------------------------------------------------------------------
-  describe('queueStats() visibility', () => {
+  describe('queueStats visibility', () => {
     it('exposes queueStats when pipelineState is running', () => {
       eventBus.emit('pipeline:start', makePipelineEvent());
       eventBus.emit('queue:updated', { pending: 2, running: 0, completed: 3, failed: 0 });
-      expect(getState().queueStats()).not.toBeNull();
+      expect(getState().queueStats).not.toBeNull();
     });
 
     it('exposes queueStats when pipelineState is draining (must stay visible)', () => {
@@ -219,21 +219,21 @@ describe('useWorkerStore — pipelineState transitions (Story 26.2)', () => {
       eventBus.emit('queue:updated', { pending: 2, running: 0, completed: 3, failed: 0 });
       eventBus.emit('pipeline:draining', makePipelineDrainingEvent());
       expect(getState().pipelineState).toBe('draining');
-      expect(getState().queueStats()).not.toBeNull();
+      expect(getState().queueStats).not.toBeNull();
     });
 
     it('hides queueStats when pipelineState is stopped', () => {
       eventBus.emit('pipeline:start', makePipelineEvent());
       eventBus.emit('queue:updated', { pending: 2, running: 0, completed: 3, failed: 0 });
       eventBus.emit('pipeline:stop', makePipelineEvent());
-      expect(getState().queueStats()).toBeNull();
+      expect(getState().queueStats).toBeNull();
     });
 
     it('queueStats returns correct values during draining', () => {
       eventBus.emit('pipeline:start', makePipelineEvent());
       eventBus.emit('queue:updated', { pending: 2, running: 0, completed: 3, failed: 1 });
       eventBus.emit('pipeline:draining', makePipelineDrainingEvent());
-      const stats = getState().queueStats();
+      const stats = getState().queueStats;
       expect(stats).toEqual({ queued: 2, done: 3, failed: 1 });
     });
 
@@ -241,9 +241,9 @@ describe('useWorkerStore — pipelineState transitions (Story 26.2)', () => {
       eventBus.emit('pipeline:start', makePipelineEvent());
       eventBus.emit('queue:updated', { pending: 5, running: 0, completed: 10, failed: 0 });
       eventBus.emit('pipeline:draining', makePipelineDrainingEvent());
-      expect(getState().queueStats()).not.toBeNull(); // visible during draining
+      expect(getState().queueStats).not.toBeNull(); // visible during draining
       eventBus.emit('pipeline:stop', makePipelineEvent());
-      expect(getState().queueStats()).toBeNull(); // hidden after stop
+      expect(getState().queueStats).toBeNull(); // hidden after stop
     });
   });
 

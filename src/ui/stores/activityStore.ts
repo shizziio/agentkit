@@ -40,7 +40,7 @@ export interface ActivityStore {
 // Module-level closure variables (NOT store state) — survive setState resets
 // ---------------------------------------------------------------------------
 let _nextId = 0;
-let _pendingBatch: Array<() => void> = [];
+let _pendingBatch: Array<(events: ActivityEvent[]) => void> = [];
 let _lastFlush = 0;
 let _flushInterval: ReturnType<typeof setInterval> | null = null;
 let _eventBus: EventBus | null = null;
@@ -254,73 +254,111 @@ const _store = create<ActivityStore>()(
       get().cleanup();
       _lastFlush = Date.now();
 
+      // Flush pending events in a single set() call to avoid N re-renders
       const flushBatch = (): void => {
         if (_pendingBatch.length === 0) return;
         const now = Date.now();
-        if (now - _lastFlush >= THROTTLE_MS) {
-          const pending = _pendingBatch;
-          _pendingBatch = [];
-          _lastFlush = now;
-          for (const action of pending) {
-            action();
-          }
+        if (now - _lastFlush < THROTTLE_MS) return;
+
+        const pending = _pendingBatch;
+        _pendingBatch = [];
+        _lastFlush = now;
+
+        // Execute all pending mutations on a snapshot, then commit once
+        const state = get();
+        let events = [...state.events];
+        for (const action of pending) {
+          action(events);
         }
+        events = events.slice(-MAX_ACTIVITY_EVENTS);
+        const scrollIndex = state.isFollowing
+          ? Math.max(0, events.length - ACTIVITY_VISIBLE_ROWS)
+          : state.scrollIndex;
+        set({ events, scrollIndex });
+      };
+
+      // Timer-driven flush — decouples rendering from event rate
+      _flushInterval = setInterval(flushBatch, THROTTLE_MS);
+
+      // Mutation type: push new event or merge into last
+      type Mutation = (events: ActivityEvent[]) => void;
+
+      const pushEvent = (formatted: Omit<ActivityEvent, 'id'>): Mutation => {
+        return (events) => {
+          events.push({ id: _nextId++, ...formatted });
+        };
+      };
+
+      const mergeTextDelta = (text: string, e: StreamEvent): Mutation => {
+        return (events) => {
+          const last = events.length > 0 ? events[events.length - 1] : null;
+          if (last && last.label === 'text' && !last.isAppLog && !last.completionData) {
+            const combined = last.message + text;
+            const lines = combined.split('\n');
+            last.message = truncate(lines[lines.length - 1] ?? '', 120);
+          } else {
+            events.push({ id: _nextId++, ...formatStreamEvent(e) });
+          }
+        };
+      };
+
+      const mergeThinkingDelta = (thinking: string, e: StreamEvent): Mutation => {
+        return (events) => {
+          const last = events.length > 0 ? events[events.length - 1] : null;
+          if (last && last.label === 'thinking' && !last.isAppLog) {
+            const combined = last.message + thinking;
+            const lines = combined.split('\n');
+            last.message = truncate(lines[lines.length - 1] ?? '', 120);
+          } else {
+            events.push({ id: _nextId++, ...formatStreamEvent(e) });
+          }
+        };
       };
 
       _onStreamToolUse = (e: StreamEvent): void => {
-        const formatted = formatStreamEvent(e);
-        _pendingBatch.push(() => {
-          get().addEvent(formatted);
-        });
-        flushBatch();
+        _pendingBatch.push(pushEvent(formatStreamEvent(e)));
       };
       _onStreamToolResult = (e: StreamEvent): void => {
-        const formatted = formatStreamEvent(e);
-        _pendingBatch.push(() => {
-          get().addEvent(formatted);
-        });
-        flushBatch();
+        _pendingBatch.push(pushEvent(formatStreamEvent(e)));
       };
       _onStreamText = (e: StreamEvent): void => {
-        const formatted = formatStreamEvent(e);
-        _pendingBatch.push(() => {
-          get().addEvent(formatted);
-        });
-        flushBatch();
+        const text = e.data.text ?? '';
+        if (!text) return;
+        _pendingBatch.push(mergeTextDelta(text, e));
       };
       _onStreamThinking = (e: StreamEvent): void => {
-        const formatted = formatStreamEvent(e);
-        _pendingBatch.push(() => {
-          get().addEvent(formatted);
-        });
-        flushBatch();
+        const thinking = e.data.thinking ?? '';
+        if (!thinking) return;
+        _pendingBatch.push(mergeThinkingDelta(thinking, e));
       };
       _onStreamError = (e: StreamEvent): void => {
-        const formatted = formatStreamEvent(e);
-        _pendingBatch.push(() => {
-          get().addEvent(formatted);
-        });
-        flushBatch();
+        _pendingBatch.push(pushEvent(formatStreamEvent(e)));
       };
       _onStreamDone = (e: StreamEvent): void => {
-        const formatted = formatStreamEvent(e);
-        _pendingBatch.push(() => {
-          get().addEvent(formatted);
-        });
-        flushBatch();
+        _pendingBatch.push(pushEvent(formatStreamEvent(e)));
       };
       _onCompleted = (e: StoryCompleteEvent): void => {
-        _pendingBatch.push(() => {
-          get().addCompletion(e);
+        _pendingBatch.push((events) => {
+          const now = formatLocalTime(new Date().toISOString());
+          const { storyTitle, stageDurations, totalAttempts, durationMs } = e;
+          events.push({
+            id: _nextId++,
+            timestamp: now,
+            stageName: '—',
+            icon: '✓',
+            label: 'complete',
+            message: storyTitle ?? e.storyKey,
+            completionData: {
+              storyTitle: storyTitle ?? e.storyKey,
+              stageDurations: stageDurations ?? [],
+              totalDurationMs: durationMs ?? 0,
+              totalAttempts: totalAttempts ?? 0,
+            },
+          });
         });
-        flushBatch();
       };
       _onAppLog = (e: LogEvent): void => {
-        const formatted = formatLogEvent(e);
-        _pendingBatch.push(() => {
-          get().addEvent(formatted);
-        });
-        flushBatch();
+        _pendingBatch.push(pushEvent(formatLogEvent(e)));
       };
 
       eventBus.on('stream:tool_use', _onStreamToolUse);
@@ -333,7 +371,6 @@ const _store = create<ActivityStore>()(
       eventBus.on('app:log', _onAppLog);
 
       _eventBus = eventBus;
-      _flushInterval = setInterval(flushBatch, 1000);
     },
 
     cleanup: (): void => {

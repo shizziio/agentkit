@@ -8,6 +8,8 @@ export { useWorkerStore, deriveDisplayName, formatElapsed } from './workerStore.
 export type { WorkerStore, QueueStats } from './workerStore.js';
 export { useCrewStore } from './crewStore.js';
 export type { CrewStore } from './crewStore.js';
+export { useMenuStore } from './menuStore.js';
+export type { MenuStore } from './menuStore.js';
 export { useActivityStore } from './activityStore.js';
 export type { ActivityStore, ActivityEvent } from './activityStore.js';
 export { useStoriesStore } from './storiesStore.js';

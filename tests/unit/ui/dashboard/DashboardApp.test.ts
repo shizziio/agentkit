@@ -39,9 +39,7 @@ vi.mock('ink', async (importOriginal) => {
   };
 });
 
-// After story 25.4: layouts no longer receive focusedPanel as a prop —
-// they read it from useDashboardStore directly. The mock omits focusedPanel
-// from the expected props so tests catch accidental prop forwarding.
+// Layouts receive focusedPanel as a prop from DashboardApp.
 vi.mock('@ui/dashboard/layouts/CompactLayout.js', () => ({
   CompactLayout: vi.fn(({ focusModePanel }: { focusModePanel: number | null }) =>
     React.createElement('div', { 'data-testid': 'compact', 'data-focus-mode': focusModePanel }),
@@ -271,30 +269,29 @@ describe('DashboardApp', () => {
   });
 
   // -------------------------------------------------------------------------
-  // Story 25.4: DashboardApp must NOT forward focusedPanel as a prop to
-  // GridLayout or CompactLayout — layouts read it from the store directly.
+  // DashboardApp passes focusedPanel as a prop to GridLayout and CompactLayout.
   // -------------------------------------------------------------------------
 
-  it('should NOT pass focusedPanel prop to GridLayout (reads from store instead)', () => {
+  it('should pass focusedPanel prop to GridLayout', () => {
     vi.mocked(useStdout).mockReturnValue({ stdout: { columns: 120 } } as unknown as ReturnType<typeof useStdout>);
 
     const result = inkRender(React.createElement(DashboardApp, makeDefaultProps()));
 
     const gridMock = vi.mocked(GridLayout);
     const lastCall = gridMock.mock.calls[gridMock.mock.calls.length - 1];
-    expect(lastCall?.[0].focusedPanel).toBeUndefined();
+    expect(lastCall?.[0].focusedPanel).toBeDefined();
 
     result.unmount();
   });
 
-  it('should NOT pass focusedPanel prop to CompactLayout (reads from store instead)', () => {
+  it('should pass focusedPanel prop to CompactLayout', () => {
     vi.mocked(useStdout).mockReturnValue({ stdout: { columns: 79 } } as unknown as ReturnType<typeof useStdout>);
 
     const result = inkRender(React.createElement(DashboardApp, makeDefaultProps()));
 
     const compactMock = vi.mocked(CompactLayout);
     const lastCall = compactMock.mock.calls[compactMock.mock.calls.length - 1];
-    expect(lastCall?.[0].focusedPanel).toBeUndefined();
+    expect(lastCall?.[0].focusedPanel).toBeDefined();
 
     result.unmount();
   });

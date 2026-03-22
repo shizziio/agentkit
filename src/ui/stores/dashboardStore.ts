@@ -7,6 +7,7 @@ export interface DashboardState {
   actionMode: ActionMode;
   isFullscreen: boolean;
   focusedPanel: number;
+  focusModePanel: number | null;
   panelCount: number;
 }
 
@@ -20,6 +21,8 @@ export interface DashboardActions {
   focusPrev: () => void;
   setFocusedPanel: (id: number) => void;
   setPanelCount: (n: number) => void;
+  enterFocusMode: () => void;
+  exitFocusMode: () => void;
 }
 
 export type DashboardStore = DashboardState & DashboardActions;
@@ -30,6 +33,7 @@ const _store = create<DashboardStore>()(
     actionMode: 'none',
     isFullscreen: false,
     focusedPanel: 0,
+    focusModePanel: null,
     panelCount: 4,
 
     isActionActive: () => get().actionMode !== 'none',
@@ -41,7 +45,7 @@ const _store = create<DashboardStore>()(
     toggleTrace: () => {
       if (get().actionMode !== 'none') return;
       const next: DashboardMode = get().dashboardMode === 'overview' ? 'trace' : 'overview';
-      set({ dashboardMode: next, isFullscreen: false });
+      set({ dashboardMode: next, isFullscreen: false, focusModePanel: null });
     },
 
     toggleFullscreen: () => {
@@ -62,13 +66,14 @@ const _store = create<DashboardStore>()(
 
     setPanelCount: (n) =>
       set((s) => ({ panelCount: n, focusedPanel: s.focusedPanel >= n ? 0 : s.focusedPanel })),
+
+    enterFocusMode: () => set((s) => ({ focusModePanel: s.focusedPanel })),
+
+    exitFocusMode: () => set({ focusModePanel: null }),
   })),
 );
 
 // Patch external setState to always merge (never replace).
-// When tests reset state via setState(INITIAL_STATE, true), replace mode would
-// erase action methods from the store. By always merging, state fields are
-// reset while action methods are preserved.
 const _origSetState = _store.setState;
 _store.setState = (partial, _replace) => _origSetState(partial);
 

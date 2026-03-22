@@ -1,131 +1,86 @@
 import { useRef } from 'react'
 import { useInput } from 'ink'
 
-interface KeyBindingsProps {
-  onLoad: () => void
-  onShip: () => void
-  onToggleWorkers: () => void
-  onToggleTrace: () => void
-  onDiagnose: () => void
-  onConfig: () => void
-  onHelp: () => void
-  onResetStory?: () => void
-  onCancelStory?: () => void
-  onChat?: () => void
-  onDrain?: () => void
-  isPipelineRunning?: boolean
-  isChatMode?: boolean
-  focusModePanel: number | null
-  onEnterFocusMode: () => void
-  onExitFocusMode: () => void
-  onQuit: () => void
-  onFocusNext: () => void
-  onFocusPrev: () => void
-  onFocusPanel: (n: number) => void
-  isActive: boolean
-  isActionActive?: boolean
-  onEnterTrace?: () => void
-  dashboardMode?: 'overview' | 'trace'
-}
+import { useDashboardStore } from '@ui/stores/dashboardStore.js'
+import { useWorkerStore } from '@ui/stores/workerStore.js'
+import { useAppStore } from '@ui/stores/appStore.js'
+import { useMenuStore } from '@ui/stores/menuStore.js'
+import { handleMenuAction } from '@ui/stores/menuActions.js'
 
 /**
  * Global dashboard key bindings.
- * Handled here so they work even if a specific panel isn't focused.
- * Note: Esc is explicitly disabled per Story 16.1 requirements.
+ * ZERO props — reads everything from stores via getState() at keypress time.
+ * Renders exactly once and never re-renders.
  */
-export function KeyBindings({
-  onLoad,
-  onShip,
-  onToggleWorkers,
-  onToggleTrace,
-  onDiagnose,
-  onConfig,
-  onHelp,
-  onResetStory,
-  onCancelStory,
-  onChat,
-  onDrain,
-  isPipelineRunning = false,
-  isChatMode = false,
-  focusModePanel,
-  onEnterFocusMode,
-  onExitFocusMode,
-  onQuit,
-  onFocusNext,
-  onFocusPrev,
-  onFocusPanel,
-  isActive,
-  isActionActive = false,
-  onEnterTrace,
-  dashboardMode = 'overview',
-}: KeyBindingsProps): null {
+export function KeyBindings(): null {
   const lastKeyTimeRef = useRef(0)
   const KEY_DEBOUNCE_MS = 150
 
   useInput(
     (input, key) => {
-      // Prevent rapid double-triggering
       const now = Date.now()
       if (now - lastKeyTimeRef.current < KEY_DEBOUNCE_MS) return
       lastKeyTimeRef.current = now
 
+      // Read state synchronously from stores — no subscriptions, no re-renders
+      const ds = useDashboardStore.getState()
+      const ws = useWorkerStore.getState()
+      const app = useAppStore.getState()
+      const menu = useMenuStore.getState()
+
+      const isActionActive = ds.actionMode !== 'none'
+      const isPipelineRunning = ws.pipelineState === 'running'
+      const isTraceMode = ds.dashboardMode === 'trace'
+
       // 1. Navigation & Focus (Tab, 1-4, F)
       if (key.tab && key.shift) {
-        if (!isActionActive) onFocusPrev()
+        if (!isActionActive) ds.focusPrev()
       } else if (key.tab) {
-        if (!isActionActive) onFocusNext()
+        if (!isActionActive) ds.focusNext()
       } else if (input >= '1' && input <= '4') {
-        if (!isActionActive) onFocusPanel(parseInt(input, 10) - 1)
+        if (!isActionActive) ds.setFocusedPanel(parseInt(input, 10) - 1)
       } else if (input === 'f' || input === 'F') {
         if (!isActionActive) {
-          if (focusModePanel !== null) {
-            onExitFocusMode()
-          } else {
-            onEnterFocusMode()
-          }
+          if (ds.focusModePanel !== null) ds.exitFocusMode()
+          else ds.enterFocusMode()
         }
       }
 
-      // 2. Global Actions (L, S, R, T, D, C, H, E, X, A, Q)
+      // 2. Global Actions
       else if (input === 'l' || input === 'L') {
-        if (!isActionActive) onLoad()
+        if (!isActionActive) ds.openAction('load')
       } else if (input === 's' || input === 'S') {
-        if (!isActionActive) onShip()
+        if (!isActionActive) ds.openAction('ship')
       } else if (input === 'r' || input === 'R') {
-        // Toggle pipeline (Stop if running, Start if idle)
-        if (dashboardMode !== 'trace') onToggleWorkers()
+        if (!isTraceMode) {
+          if (isPipelineRunning) ds.openAction('terminate-confirm')
+          else app.onToggleWorkers?.()
+        }
       } else if (input === 't' || input === 'T') {
         if (!isActionActive) {
-          onToggleTrace()
-          onEnterTrace?.()
+          ds.toggleTrace()
+          app.onEnterTrace?.()
         }
       } else if (input === 'd' || input === 'D') {
         if (!isActionActive) {
-          if (isPipelineRunning) {
-            onDrain?.()
-          } else {
-            onDiagnose()
-          }
+          if (isPipelineRunning) ds.openAction('drain-confirm')
+          else ds.openAction('diagnose')
         }
       } else if (input === 'c' || input === 'C') {
-        if (!isActionActive) onConfig()
+        if (!isActionActive) handleMenuAction('config')
       } else if (input === 'h' || input === 'H') {
-        if (!isActionActive) onHelp()
+        if (!isActionActive) ds.openAction('help')
       } else if (input === 'e' || input === 'E') {
-        if (!isActionActive) onResetStory?.()
+        if (!isActionActive) ds.openAction('reset-story')
       } else if (input === 'x' || input === 'X') {
-        if (!isActionActive) onCancelStory?.()
+        if (!isActionActive) ds.openAction('cancel-story')
       } else if (input === 'a' || input === 'A') {
-        if (!isActionActive) onChat?.()
+        if (!isActionActive) handleMenuAction('ask-agent')
       } else if (input === 'q' || input === 'Q') {
-        // Q handles everything: back from action, back from submenu, or quit confirm
-        // onQuit is bound to menuStack.handleQ() in DashboardApp.tsx
-        onQuit()
+        menu.handleQ()
       }
-
-      // Note: Esc is intentionally omitted.
     },
-    { isActive: isActive && !isChatMode }
+    { isActive: true }
   )
 
   return null

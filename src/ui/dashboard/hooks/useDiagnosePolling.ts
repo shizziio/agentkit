@@ -19,7 +19,6 @@ export function useDiagnosePolling(eventBus: EventBus | undefined): UseDiagnoseP
   const [lastResult, setLastResult] = useState<DiagnoseResult | null>(null);
   const [lastPollAt, setLastPollAt] = useState<number | null>(null);
   const [nextPollAt, setNextPollAt] = useState<number | null>(null);
-  const [nextPollIn, setNextPollIn] = useState<number>(0);
   const [isPolling, setIsPolling] = useState(false);
   const [pollError, setPollError] = useState<string | null>(null);
 
@@ -31,7 +30,6 @@ export function useDiagnosePolling(eventBus: EventBus | undefined): UseDiagnoseP
       setLastResult(event.result);
       setLastPollAt(now);
       setNextPollAt(now + POLL_INTERVAL_MS);
-      setNextPollIn(Math.ceil(POLL_INTERVAL_MS / 1000));
       setIsPolling(true);
       setPollError(event.error ?? null);
     };
@@ -43,16 +41,10 @@ export function useDiagnosePolling(eventBus: EventBus | undefined): UseDiagnoseP
     };
   }, [eventBus]);
 
-  useEffect(() => {
-    const timer = setInterval(() => {
-      if (nextPollAt !== null) {
-        const remaining = Math.max(0, Math.ceil((nextPollAt - Date.now()) / 1000));
-        setNextPollIn(remaining);
-      }
-    }, 5000);
-
-    return () => clearInterval(timer);
-  }, [nextPollAt]);
+  // Compute nextPollIn as derived value — no timer needed
+  const nextPollIn = nextPollAt !== null
+    ? Math.max(0, Math.ceil((nextPollAt - Date.now()) / 1000))
+    : 0;
 
   return { lastResult, lastPollAt, nextPollAt, nextPollIn, isPolling, pollError };
 }

@@ -732,6 +732,14 @@ interface StageConfig {
   reset_to?: string[]           // valid stages for manual reset
   skipDeps?: boolean            // skip all dependency checks (default: false)
   skipDepsLevel?: 'epic' | 'story'  // scope of dep check (default: 'epic')
+  agentTeam?: AgentTeamConfig   // optional: use Claude native agent teams for parallel execution
+}
+
+interface AgentTeamConfig {
+  teammates: number             // number of teammates to spawn (1-8)
+  teammateModel?: string        // model for teammates (default: inherit stage model)
+  timeoutMultiplier?: number    // multiply stage timeout (default: 3)
+  planApproval?: boolean        // require plan approval before implementation (default: false)
 }
 
 interface ProviderModelsConfig {

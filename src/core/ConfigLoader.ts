@@ -95,7 +95,7 @@ export class ConfigLoader {
   hasTeam(): boolean {
     try {
       const config = this.loadProjectConfig()
-      return config.teams.length > 0 && config.activeTeam !== ''
+      return config.teams.length > 0
     } catch {
       return false
     }
@@ -104,10 +104,16 @@ export class ConfigLoader {
   load(): PipelineConfig {
     const projectConfig = this.loadProjectConfig()
 
-    if (projectConfig.teams.length === 0 || !projectConfig.activeTeam) {
+    if (projectConfig.teams.length === 0) {
       throw new ConfigError(
         'No team configured. Run `agentkit setup` or `agentkit start` to create a team.'
       )
+    }
+
+    // Auto-set activeTeam to first team if empty
+    if (!projectConfig.activeTeam) {
+      projectConfig.activeTeam = projectConfig.teams[0]!
+      logger.info('configLoader: auto-set activeTeam', { activeTeam: projectConfig.activeTeam })
     }
 
     if (!projectConfig.teams.includes(projectConfig.activeTeam)) {

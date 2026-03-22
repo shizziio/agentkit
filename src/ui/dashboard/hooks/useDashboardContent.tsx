@@ -30,7 +30,6 @@ import { useAppStore } from '@ui/stores/appStore.js'
 import type { ProjectConfig } from '@core/ConfigTypes.js'
 
 import type { UseMenuStack } from './useMenuStack.js'
-import type { QueueStats } from '@ui/stores/workerStore.js'
 
 interface UseDashboardContentParams {
   actionMode: ActionMode
@@ -41,8 +40,6 @@ interface UseDashboardContentParams {
   onTerminateConfirm?: () => void
   onQuitConfirm?: () => void
   onDrainConfirm?: () => void
-  isPipelineRunning?: boolean
-  queueStats?: QueueStats | null
   menuStack: UseMenuStack
   width?: number
   height?: number
@@ -320,21 +317,12 @@ function computeProjectConfig(): ProjectConfig {
 }
 
 export function useDashboardContent(params: UseDashboardContentParams): UseDashboardContentResult {
-  const { actionMode, isActionActive, focusedPanel } = params
+  const { actionMode, isActionActive } = params
 
   const projectConfig = computeProjectConfig()
 
-  const isTLFocused = focusedPanel === 0
-
   const idleContent = (
     <CommandMenuPanel
-      isFocused={isTLFocused}
-      isActionActive={params.isActionActive}
-      actionMode={actionMode}
-      onSelectAction={params.onSelectAction}
-      isPipelineRunning={params.isPipelineRunning}
-      queueStats={params.queueStats}
-      menuStack={params.menuStack}
       width={params.width}
       height={params.height}
     />

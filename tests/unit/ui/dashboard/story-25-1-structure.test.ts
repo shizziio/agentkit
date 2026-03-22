@@ -872,13 +872,9 @@ describe('Story 25.1: Dashboard Reorganization', () => {
     });
 
     describe('layouts/GridLayout.tsx', () => {
-      it('imports PipelineFlowPanel from ../pipeline-flow/PipelineFlowPanel.js', () => {
+      it('does NOT import PipelineFlowPanel (tlPanelNode is always provided as prop)', () => {
         const content = readSrcFile('ui/dashboard/layouts/GridLayout.tsx');
-        expect(content).toMatch(/from ['"]\.\.\/pipeline-flow\/PipelineFlowPanel\.js['"]/);
-      });
-      it('does NOT use flat ./PipelineFlowPanel.js import', () => {
-        const content = readSrcFile('ui/dashboard/layouts/GridLayout.tsx');
-        expect(content).not.toMatch(/from ['"]\.\/PipelineFlowPanel\.js['"]/);
+        expect(content).not.toMatch(/PipelineFlowPanel/);
       });
       it('imports ActiveStoriesPanel from ../active-stories/ActiveStoriesPanel.js', () => {
         const content = readSrcFile('ui/dashboard/layouts/GridLayout.tsx');

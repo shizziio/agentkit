@@ -5,6 +5,7 @@ import type { IDiagnoseService } from '@core/DiagnoseTypes.js'
 import type { DiagnoseIssue, DiagnoseResult } from '@core/DiagnoseTypes.js'
 import { formatLocalTimeMs } from '@shared/FormatTime.js'
 import { useAppStore } from '@ui/stores/appStore.js'
+import { useDashboardStore } from '@ui/stores/dashboardStore.js'
 import { useDiagnosePolling } from '../hooks/useDiagnosePolling.js'
 import { PipelineCrew } from '../crew/PipelineCrew.js'
 
@@ -20,6 +21,8 @@ interface DiagnosePanelProps {
   width?: number
   height?: number
 }
+
+// Re-export for backwards compat — prop is still accepted but optional
 
 function truncate(str: string, max: number): string {
   if (str.length > max) {
@@ -48,13 +51,15 @@ function issueColor(type: DiagnoseIssue['type']): string {
 function DiagnosePanelInner({
   stages,
   teamStages,
-  diagnoseService,
-  isFocused,
+  diagnoseService: diagnoseServiceProp,
   dimmed = false,
   width: _width,
   height: _height,
 }: DiagnosePanelProps): React.JSX.Element {
+  const isFocused = useDashboardStore(s => s.focusedPanel === 3);
   const eventBus = useAppStore(s => s.eventBus);
+  const diagnoseServiceFromStore = useAppStore(s => s.diagnoseService);
+  const diagnoseService = diagnoseServiceProp ?? diagnoseServiceFromStore ?? undefined;
   const { lastResult, lastPollAt } = useDiagnosePolling(eventBus ?? undefined);
   const [manualResult, setManualResult] = useState<DiagnoseResult | null>(null)
   const [manualLastAt, setManualLastAt] = useState<number | null>(null)
