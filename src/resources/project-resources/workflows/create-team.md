@@ -83,37 +83,79 @@ Choose a team template:
       Pipeline: SM → Tester → Review → Dev
       Plan first, write tests, review tests, then implement.
 
-  (c) Reuse an existing team from ~/.agentkit/teams/
+  (c) Reuse existing teams from ~/.agentkit/teams/
   (d) Create a custom team from scratch
   (e) Edit an existing project team
 ```
 
 **Built-in templates** are located at `_agent_kit/resources/teams/software-dev/` and `_agent_kit/resources/teams/software-dev-tdd/`. Read their `config.json` for the stage configuration.
 
+---
+
 **If user picks (a) or (b) — built-in template:**
-1. Read the template `config.json` from `_agent_kit/resources/teams/{template}/`
-2. Ask user to name the team for this project: `{project-short-name}-{domain}` (e.g., `myapp-backend`)
-3. Ask if user wants to modify stages, models, or ownership before creating
-4. **Regenerate prompts** using THIS project's context (Phase 2) — do NOT copy template prompts as-is
-5. Jump to Phase 2
+
+The user can create **multiple teams** at once from the same template. After choosing a template:
+
+**Step 1:** Scan the project (same as 1.2) and suggest domains:
+```
+Template: Software Developer (Traditional)
+
+Based on your project, I suggest these teams:
+
+  [x] {project}-frontend   Ownership: src/ui/**, src/components/**
+  [x] {project}-backend    Ownership: src/api/**, src/services/**, src/core/**
+  [ ] {project}-mobile     Ownership: src/mobile/**
+
+[Space] toggle  [Enter] confirm  [N] add custom domain
+```
+
+- User toggles which domains to create (default: all suggested)
+- User can add custom domains via [N]
+- Each domain becomes a team with the chosen template's stage config
+- All teams share the same pipeline style (Traditional or TDD)
+
+**Step 2:** For each selected domain, confirm details:
+```
+Creating 2 teams from "Software Developer" template:
+
+  1. {project}-frontend  "Frontend Development"
+     Ownership: ["src/ui/**", "src/components/**"]
+
+  2. {project}-backend  "Backend Development"
+     Ownership: ["src/api/**", "src/services/**", "src/core/**"]
+
+Modify any team before creating? [Y/N]
+```
+
+**Step 3:** Create all teams sequentially:
+- For each team: copy template config → set team name, displayName, ownership → regenerate prompts with project context (Phase 2) → update `agentkit.config.json`
+- After ALL teams are created, show summary
+
+---
 
 **If user picks (c) — reuse existing:**
 
-Scan `~/.agentkit/teams/` for previously created teams and list them:
+Scan `~/.agentkit/teams/` for previously created teams. User can select **multiple**:
 
 ```
 Existing teams in ~/.agentkit/teams/:
-  1. janitor-frontend  (sm → dev → review → tester)
-  2. janitor-backend   (sm → dev → review → tester)
+
+  [ ] janitor-frontend  (sm → dev → review → tester)
+  [ ] janitor-backend   (sm → dev → review → tester)
+  [ ] google-veo3       (sm → dev → review → tester)
+
+[Space] toggle  [Enter] confirm
 ```
 
-On selection:
-1. Copy the selected team's `config.json` to `_agent_kit/teams/{team-name}/`
-2. **Do NOT copy prompt files** — regenerate them for THIS project (Phase 2)
-3. Ask if user wants to rename for this project
-4. Jump to Phase 2
+For each selected team:
+1. Copy the `config.json` to `_agent_kit/teams/{team-name}/`
+2. Ask if user wants to rename for this project (e.g., `janitor-frontend` → `myapp-frontend`)
+3. **Do NOT copy prompt files** — regenerate them for THIS project (Phase 2)
+4. After ALL teams processed, update `agentkit.config.json` with all new teams
 
-**If user picks (d):** continue with 1.2.
+---
+
+**If user picks (d):** continue with 1.2 (single custom team).
 **If user picks (e):** jump to **Edit Flow**.
 
 ### 1.2 — Team Suggestions (Auto-Analyze)
