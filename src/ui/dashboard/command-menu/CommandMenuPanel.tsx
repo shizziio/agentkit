@@ -17,6 +17,7 @@ const MENUS: Record<MenuLevel, MenuItem[]> = {
     { action: 'task-mgmt',       label: 'Task Management',        isSubmenu: true, hotkey: 'K' },
     { action: 'diagnose',  label: 'Diagnose', hotkey: 'D' },
     { action: 'config',    label: 'Config', isSubmenu: true, hotkey: 'C' },
+    { action: 'custom-rules',    label: 'Custom Rules', hotkey: 'U' },
     { action: 'create-planning', label: 'Create Planning', hotkey: 'P' },
     { action: 'ask-agentkit',    label: 'Ask AgentKit', hotkey: 'W' },
     { action: 'ask-agent', label: 'Ask Agent', hotkey: 'A' },

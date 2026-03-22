@@ -68,14 +68,53 @@ Wait for user confirmation or corrections. Update your context understanding acc
 
 ## Phase 1: Collect Team Information
 
-### 1.1 — Mode Selection
+### 1.1 — Choose Team Template
 
-Ask first:
-> "Do you want to (a) create a new team from scratch, (b) clone an existing team and customise it, or (c) edit an existing team?"
+AgentKit ships with 2 built-in team templates. Present them first:
 
-- If **(b) clone**: jump to **Clone Flow** at the end of this document, then return for Phase 3 validation.
-- If **(c) edit**: jump to **Edit Flow** at the end of this document, then return for Phase 3 validation.
-- If **(a) new**: continue with 1.2.
+```
+Choose a team template:
+
+  (a) Software Developer — Traditional
+      Pipeline: SM → Dev → Review → Tester
+      Plan first, implement, review code, then test.
+
+  (b) Software Developer — Test-Driven (TDD)
+      Pipeline: SM → Tester → Review → Dev
+      Plan first, write tests, review tests, then implement.
+
+  (c) Reuse an existing team from ~/.agentkit/teams/
+  (d) Create a custom team from scratch
+  (e) Edit an existing project team
+```
+
+**Built-in templates** are located at `_agent_kit/resources/teams/software-dev/` and `_agent_kit/resources/teams/software-dev-tdd/`. Read their `config.json` for the stage configuration.
+
+**If user picks (a) or (b) — built-in template:**
+1. Read the template `config.json` from `_agent_kit/resources/teams/{template}/`
+2. Ask user to name the team for this project: `{project-short-name}-{domain}` (e.g., `myapp-backend`)
+3. Ask if user wants to modify stages, models, or ownership before creating
+4. **Regenerate prompts** using THIS project's context (Phase 2) — do NOT copy template prompts as-is
+5. Jump to Phase 2
+
+**If user picks (c) — reuse existing:**
+
+Scan `~/.agentkit/teams/` for previously created teams and list them:
+
+```
+Existing teams in ~/.agentkit/teams/:
+  1. janitor-frontend  (sm → dev → review → tester)
+  2. janitor-backend   (sm → dev → review → tester)
+```
+
+On selection:
+1. Copy the selected team's `config.json` to `_agent_kit/teams/{team-name}/`
+2. **Do NOT copy prompt files** — regenerate them for THIS project (Phase 2)
+3. Ask if user wants to rename for this project
+4. Jump to Phase 2
+
+**If user picks (d):** continue with 1.2.
+**If user picks (e):** jump to **Edit Flow**.
 
 ### 1.2 — Team Suggestions (Auto-Analyze)
 
@@ -331,38 +370,129 @@ Write `_agent_kit/teams/{teamName}/config.json` using this exact structure (Team
 
 Write `_agent_kit/teams/{teamName}/prompts/{stageName}.md` for **each** stage.
 
-**Prompt generation guidelines:**
+**CRITICAL:** Every prompt MUST be **project-specific**. Use the project docs loaded in Phase 0 to inject real project context — NOT generic placeholders.
 
-Each prompt must be **project-specific**, not a generic stub. Use the project context loaded in Phase 0 to write meaningful instructions.
+**What to extract from project docs for each prompt:**
+- From `docs/project-context.md`: project name, domain, tech stack, directory structure
+- From `docs/architecture.md`: layer rules, DB schema, key interfaces, component patterns
+- From `docs/architecture-rules.md`: naming conventions, import rules, error handling patterns, test patterns
 
-Structure each prompt as:
+---
+
+#### SM (Scrum Master / Implementation Planner) prompt — `prompts/sm.md`
+
+The SM must understand THIS project to create good implementation plans.
+
+**Include in the prompt:**
+- Project name and what it does (from project-context)
+- Tech stack: language, runtime, framework, database, UI framework
+- Directory structure: where source files live, where tests go
+- Naming conventions: file naming, variable naming, class naming
+- Key architecture patterns: EventBus? Provider pattern? Layer rules?
+- What a good implementation plan looks like for THIS project
+
+**SM skills for THIS project:**
+- Know which directories to suggest for new files
+- Know which existing patterns to follow (e.g., "follow the Service pattern in src/core/")
+- Know the test framework and where tests go (e.g., "tests/unit/{module}.test.ts")
+- Reference actual architecture rules from docs
+
+---
+
+#### Dev (Developer) prompt — `prompts/dev.md`
+
+The Dev must know how to write code that fits THIS project.
+
+**Include in the prompt:**
+- All tech stack details (language version, strict mode, ESM vs CJS)
+- Coding patterns: functional vs OOP, class conventions, error handling
+- Import conventions: path aliases, import ordering
+- Database patterns: ORM usage, migration rules, transaction patterns
+- UI patterns: component structure, state management, styling approach
+- Test requirements: framework, coverage expectations, mock patterns
+- Build/type-check command (e.g., `npx tsc -p tsconfig.src.json --noEmit`)
+- What NOT to do (e.g., "NEVER run npm run build", "NEVER use any type")
+
+**Dev skills for THIS project:**
+- Write code that matches existing file patterns
+- Use the project's error handling approach
+- Follow the project's layer dependency rules
+- Know which commands to run for validation
+
+---
+
+#### Review (Code Reviewer) prompt — `prompts/review.md`
+
+The Reviewer must check code against THIS project's standards.
+
+**Include in the prompt:**
+- Architecture rules: layer boundaries, forbidden imports, dependency direction
+- Naming conventions: exact patterns from architecture-rules.md
+- Error handling standards: custom error classes, no swallowed catches
+- Test standards: what tests are expected, coverage requirements
+- Security checklist items specific to this project
+- Performance concerns specific to this domain
+
+**Reviewer skills for THIS project:**
+- Check imports follow the project's path alias conventions
+- Verify new modules are in the correct directory per architecture
+- Check DB queries follow the project's transaction patterns
+- Verify error types match the project's error hierarchy
+
+---
+
+#### Tester (QA Engineer) prompt — `prompts/tester.md`
+
+The Tester must know how to verify code in THIS project.
+
+**Include in the prompt:**
+- Test framework: vitest, jest, mocha, etc.
+- Test file location: where tests live, naming convention
+- How to run tests: exact command (e.g., `npm test`, `npx vitest run`)
+- Type-check command: exact command
+- What to check: acceptance criteria verification approach
+- Build constraints: what NOT to run (e.g., "NEVER run npm run build")
+
+**Tester skills for THIS project:**
+- Run the correct test commands
+- Write tests matching the project's test patterns
+- Know what assertions to use
+- Know how to mock dependencies in this project's style
+
+---
+
+#### Prompt template structure
+
+Each prompt file must follow this structure:
 
 ```markdown
-# {StageDisplayName} Prompt
+# {StageDisplayName} — {Short Role Description}
 
-## Role
-You are a {roleDescription} for the {projectName} project.
+{Role description referencing THIS project specifically}
 
 ## Project Context
-{1-2 sentences summarizing the project domain and purpose from loaded documents}
+
+{Project name}: {what it does}
+Tech: {language}, {runtime}, {framework}, {database}
+Source: {directory layout summary}
 
 ## Tech Stack & Conventions
-{Relevant constraints from architecture-rules.md or other loaded docs, e.g.:
-- Language: TypeScript with strict mode
-- Runtime: Bun
-- Database: SQLite via Drizzle ORM (schema-first)
-- UI: React with functional components
-- Naming: kebab-case files, camelCase variables}
+
+{Actual conventions extracted from docs — NOT generic ones}
 
 ## Your Responsibilities
-{Stage-specific duties, e.g., for a developer stage:
-- Implement the story as described
-- Follow existing code patterns in the codebase
-- Write tests for new functionality
-- Update documentation if public API changes}
+
+{Stage-specific duties using project-specific language}
 
 ## Quality Standards
-{What good output looks like for this stage, derived from project conventions}
+
+{What good output looks like, referencing project standards}
+
+## Story Context
+
+**Story:** {{STORY_TITLE}}
+
+{{STORY_CONTENT}}
 
 ## Instructions
 
@@ -374,36 +504,23 @@ You MUST save your result using the Write tool to this exact path:
 {{OUTPUT_FILE}}
 
 The file must contain ONLY valid JSON matching this schema:
-{stage-specific JSON schema — see below}
+{stage-specific JSON schema}
 
-RULES:
-- Use the Write tool to create the file. Do NOT print JSON to console.
-- File content must be valid JSON only — no markdown, no comments, no wrapping.
-- Write the file BEFORE your final response.
-- If you cannot complete the task, still write the file with a "status": "BLOCKED" field and explain in a "blockers" field.
+IMPORTANT:
+- Do NOT output anything other than the Write tool call
+- Do NOT wrap the JSON in markdown code blocks inside the file
+- The JSON must be valid and parseable
 ```
 
-**Rules for prompt content:**
-- `{{TASK_INPUT}}` is the runtime injection point for task input data
-- `{{OUTPUT_FILE}}` is the runtime injection point for the output file path — agentkit injects this automatically
-- Both placeholders are REQUIRED in every prompt template
-- Reference actual project conventions from loaded documents (not invented ones)
-- If no project context was available, write a reasonable generic prompt with a note: `<!-- TODO: Customize this prompt with project-specific context -->`
-- Tailor the "Responsibilities" and "Quality Standards" sections to the stage's role in the pipeline
-- For review/QA stages: reference coding standards and what to check for
-- For creative stages: reference style guides or tone guidelines if found in loaded docs
+**Required placeholders (both MUST be present):**
+- `{{TASK_INPUT}}` — runtime injection of task input
+- `{{OUTPUT_FILE}}` — runtime injection of output file path
 
-**Rules for OUTPUT CONTRACT JSON schema:**
-- Each stage MUST define a JSON schema appropriate to its role in the pipeline
-- The schema must include a `status` or `verdict` field so routing logic can determine next action
-- Refer to the routing config (`next`, `reject_to`) to understand what downstream stages expect as input
-- Common patterns:
-  - **Planner/SM stages**: `{ task_id, title, description, implementation_steps[], files_to_modify[], acceptance_criteria[] }`
-  - **Executor/Dev stages**: `{ task_id, status: "DONE|BLOCKED", files_changed[], implementation_summary, tests_written[], blockers }`
-  - **Review stages**: `{ task_id, verdict: "APPROVED|CHANGES_REQUESTED", issues[], review_summary }`
-  - **QA/Tester stages**: `{ task_id, verdict: "PASSED|FAILED", test_results[], issues[], test_summary }`
-- Customize fields based on the team's domain (e.g., a novel-writing "editor" stage might have `{ chapter_id, verdict, prose_issues[], structural_notes }`)
-- The schema in the OUTPUT CONTRACT block should match what the NEXT stage expects as input via `{{TASK_INPUT}}`
+**OUTPUT CONTRACT JSON schemas per stage:**
+- **SM**: `{ task_id, title, description, implementation_steps[], files_to_modify[], files_to_create[], acceptance_criteria[], edge_cases[], risks[] }`
+- **Dev**: `{ task_id, status: "DONE|BLOCKED", files_changed[], implementation_summary, tests_written[], tests_passing, blockers[] }`
+- **Review**: `{ task_id, verdict: "APPROVED|CHANGES_REQUESTED", issues[], acceptance_criteria_met[], review_summary }`
+- **Tester**: `{ task_id, verdict: "PASSED|FAILED", test_results: {total,passed,failed,skipped}, acceptance_criteria_verified[], new_tests_written[], failures[], summary }`
 
 ### 2.4 — Update project config
 

@@ -47,6 +47,7 @@ export interface ProjectConfig {
   env?: Record<string, Record<string, string>>
   settings?: Record<string, string>
   maxConcurrentSessions?: number
+  enabledRules?: string[]
 }
 
 export interface ConfigSettings {

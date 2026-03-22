@@ -11,7 +11,8 @@ import type { BaseProvider, ProviderConfig } from '@providers/interfaces/BasePro
 import { Logger } from '@core/Logger.js'
 import { DrainSignal } from '@core/DrainSignal.js'
 
-import { loadPrompt, injectInput, buildResumePrompt } from './PromptLoader.js'
+import { loadPrompt, injectInput, buildResumePrompt, buildRulesSection } from './PromptLoader.js'
+import { RulesService } from '@core/RulesService.js'
 import { generateSessionName, isResumable, parseSessionInfo } from './SessionManager.js'
 import type { SessionIdResolver } from '@providers/interfaces/BaseProvider.js'
 import { getOutputPath, ensureOutputDir, deleteOutputFile } from './OutputFileManager.js'
@@ -32,6 +33,7 @@ export class StageWorker {
   private readonly taskLogWriter: TaskLogWriter
   private readonly drainSignal: DrainSignal
   private readonly sessionResolver: SessionIdResolver | null
+  private readonly rulesService: RulesService
   private currentPollInterval: number
   private status: StageWorkerStatus = 'idle'
   private currentTaskId: number | null = null
@@ -55,6 +57,7 @@ export class StageWorker {
     this.drainSignal = drainSignal
     this.queue = new Queue(db)
     this.sessionResolver = provider.createSessionResolver?.(db, config.projectRoot) ?? null
+    this.rulesService = new RulesService(config.projectRoot)
     this.currentPollInterval = config.pollInterval
   }
 
@@ -432,13 +435,20 @@ export class StageWorker {
         `Story#${storyId} not found for task#${taskId} — prompt will have no story context`
       )
     }
-    const prompt = injectInput(loadPrompt(this.config.promptPath, this.config.projectRoot), {
+    let prompt = injectInput(loadPrompt(this.config.promptPath, this.config.projectRoot), {
       input,
       taskId,
       storyTitle: story?.title,
       storyContent: story?.content ?? undefined,
       outputFile: outputPath,
     })
+
+    // Append enabled custom rules from _agentkit-output/rules/
+    const rulesContent = this.rulesService.loadEnabledContent()
+    if (rulesContent) {
+      prompt += buildRulesSection(rulesContent)
+    }
+
     logger.info(`Prompt built — calling ${this.provider.name} task#${taskId}`, {
       stage: this.config.stageName,
       model: this.config.model,

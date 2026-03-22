@@ -259,3 +259,12 @@ export function buildConsumedContractsSection(epicKey: string, projectRoot: stri
   sections.push('');
   return sections.join('\n');
 }
+
+/**
+ * Build a rules section from enabled custom rules.
+ * Returns empty string if no rules are enabled.
+ */
+export function buildRulesSection(rulesContent: string): string {
+  if (!rulesContent) return '';
+  return `\n\n## Project Rules\n\nThe following rules MUST be followed in all work:\n\n${rulesContent}\n`;
+}

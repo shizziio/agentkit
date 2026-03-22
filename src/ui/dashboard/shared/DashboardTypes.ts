@@ -39,6 +39,7 @@ export const ACTION_MODES = [
   'drain-confirm',
   'create-planning',
   'ask-agentkit',
+  'custom-rules',
 ] as const
 
 export type ActionMode = 'none' | typeof ACTION_MODES[number]

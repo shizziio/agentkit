@@ -2,6 +2,7 @@ import React from 'react'
 import { Box, Text } from 'ink'
 
 import { LoadWizard } from '@ui/load/LoadWizard.js'
+import { CustomRulesPanel } from '@ui/rules/CustomRulesPanel.js'
 
 import { ShipWizard } from '@ui/ship/ShipWizard.js'
 import { DiagnoseWizard } from '@ui/diagnose/DiagnoseWizard.js'
@@ -268,6 +269,13 @@ function buildActiveContent(
           <Text> </Text>
           <Text dimColor>Press [Q] to go back</Text>
         </Box>
+      )
+    case 'custom-rules':
+      return (
+        <CustomRulesPanel
+          onBack={handleActionClose}
+          compact={true}
+        />
       )
     case 'epic-story-mgmt':
     case 'task-mgmt':

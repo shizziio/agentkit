@@ -72,7 +72,14 @@ export class ClaudeCliProvider implements BaseProvider {
       `Spawned Claude task#${config.taskId} [stage=${config.stageName} model=${config.model} timeout=${Math.round(config.timeout / 60000)}m promptLen=${prompt.length}]`
     )
     // Build args array — NOT through a shell, so no escaping needed
-    const args = ['-p', prompt, '--model', config.model, '--verbose']
+    // Use stream-json for structured streaming events (text, tool_use, thinking, etc.)
+    const args = [
+      '-p', prompt,
+      '--model', config.model,
+      '--output-format', 'stream-json',
+      '--verbose',
+      '--include-partial-messages',
+    ]
 
     // Map permissions to the appropriate Claude CLI flag
     if (config.permissions === 'dangerously-skip') {
@@ -140,15 +147,43 @@ export class ClaudeCliProvider implements BaseProvider {
     })
 
     const rawStdoutLines: string[] = []
-    const lines: string[] = []
+    const pendingEvents: StreamEvent[] = []
+    let collectedText = ''
     let exitCode: number | null = null
     let done = false
     let wakeUp: (() => void) | null = null
     let rejectFn: ((err: Error) => void) | null = null
+    let inputTokens: number | undefined
+    let outputTokens: number | undefined
 
     rl.on('line', line => {
       rawStdoutLines.push(line)
-      lines.push(line)
+      if (!line.trim()) return
+
+      try {
+        const event = JSON.parse(line) as Record<string, unknown>
+        const parsed = parseStreamJsonEvent(event, config.taskId, config.stageName)
+        if (parsed) {
+          pendingEvents.push(parsed)
+          // Collect text for output resolution
+          if (parsed.type === 'text' && parsed.data.text) {
+            collectedText += parsed.data.text
+          }
+          // Capture token usage from result messages
+          if (event.type === 'result') {
+            const usage = (event as { usage?: { input_tokens?: number; output_tokens?: number } }).usage
+            if (usage) {
+              inputTokens = usage.input_tokens
+              outputTokens = usage.output_tokens
+            }
+          }
+        }
+      } catch {
+        // Not JSON — emit as raw text (fallback)
+        pendingEvents.push(makeEvent(config.taskId, config.stageName, 'text', { text: line }))
+        collectedText += line + '\n'
+      }
+
       wakeUp?.()
     })
 
@@ -165,28 +200,18 @@ export class ClaudeCliProvider implements BaseProvider {
     const timer = setTimeout(() => {
       void (async () => {
         logger.warn(
-          `TIMEOUT task#${config.taskId} after ${Math.round(config.timeout / 60000)}m — killing pid=${pid} [stage=${config.stageName} linesCollected=${rawStdoutLines.length}]`,
-          {
-            stderrSnippet: stderrBuffer,
-          }
+          `TIMEOUT task#${config.taskId} after ${Math.round(config.timeout / 60000)}m — killing pid=${pid} [stage=${config.stageName}]`,
+          { stderrSnippet: stderrBuffer }
         )
-        try {
-          process.kill(-pid, 'SIGTERM')
-        } catch {
-          /* already dead */
-        }
+        try { process.kill(-pid, 'SIGTERM') } catch { /* already dead */ }
         await new Promise<void>(res => setTimeout(res, 5000))
-        try {
-          process.kill(-pid, 'SIGKILL')
-        } catch {
-          /* already dead */
-        }
+        try { process.kill(-pid, 'SIGKILL') } catch { /* already dead */ }
       })()
     }, config.timeout)
 
     try {
-      while (!done || lines.length > 0) {
-        if (lines.length === 0) {
+      while (!done || pendingEvents.length > 0) {
+        if (pendingEvents.length === 0) {
           await new Promise<void>((resolve, reject) => {
             wakeUp = resolve
             rejectFn = err => reject(new ProviderError(`Process error: ${err.message}`))
@@ -195,10 +220,9 @@ export class ClaudeCliProvider implements BaseProvider {
           rejectFn = null
         }
 
-        while (lines.length > 0) {
-          const line = lines.shift()
-          if (line === undefined) continue
-          yield makeEvent(config.taskId, config.stageName, 'text', { text: line })
+        while (pendingEvents.length > 0) {
+          const event = pendingEvents.shift()
+          if (event) yield event
         }
       }
 
@@ -217,9 +241,7 @@ export class ClaudeCliProvider implements BaseProvider {
         const isTimeout = exitCode === 143 || exitCode === 137
         logger.warn(
           `Claude exit(${exitCode}) task#${config.taskId} [stage=${config.stageName} ${Date.now() - startTime}ms ${isTimeout ? (exitCode === 143 ? 'SIGTERM/timeout' : 'SIGKILL/force') : 'non-zero'}]`,
-          {
-            stderr: stderrBuffer.trim(),
-          }
+          { stderr: stderrBuffer.trim() }
         )
         yield makeEvent(config.taskId, config.stageName, 'error', {
           error: `Process exited with code ${String(exitCode)}. stderr: ${stderrBuffer.trim()}`,
@@ -227,12 +249,14 @@ export class ClaudeCliProvider implements BaseProvider {
       }
 
       yield makeEvent(config.taskId, config.stageName, 'raw_trace', {
-        stdout: rawStdoutLines.join('\n'),
+        stdout: collectedText,
         stderr: stderrBuffer,
       })
 
-      // tokens unavailable in plain text mode — accepted trade-off (see story 8.8)
-      yield makeEvent(config.taskId, config.stageName, 'done', {})
+      yield makeEvent(config.taskId, config.stageName, 'done', {
+        inputTokens,
+        outputTokens,
+      })
     } finally {
       clearTimeout(timer)
       processManager.unregister(pid)
@@ -248,4 +272,90 @@ function makeEvent(
   data: StreamEvent['data']
 ): StreamEvent {
   return { taskId, stageName, type, timestamp: Date.now(), data }
+}
+
+/**
+ * Parse a Claude stream-json event into an AgentKit StreamEvent.
+ *
+ * Claude stream-json format (newline-delimited JSON):
+ * - { type: "stream_event", event: { delta: { type: "text_delta", text: "..." } } }
+ * - { type: "stream_event", event: { delta: { type: "thinking_delta", thinking: "..." } } }
+ * - { type: "stream_event", event: { delta: { type: "input_json_delta", ... } } }  (tool input)
+ * - { type: "stream_event", event: { type: "content_block_start", content_block: { type: "tool_use", name: "..." } } }
+ * - { type: "stream_event", event: { type: "content_block_stop" } }
+ * - { type: "result", result: "...", session_id: "...", usage: { input_tokens, output_tokens } }
+ * - { type: "system", subtype: "api_retry", ... }
+ */
+function parseStreamJsonEvent(
+  raw: Record<string, unknown>,
+  taskId: number,
+  stageName: string,
+): StreamEvent | null {
+  const type = raw.type as string | undefined
+
+  if (type === 'stream_event') {
+    const event = raw.event as Record<string, unknown> | undefined
+    if (!event) return null
+
+    // Content block start — tool_use
+    if (event.type === 'content_block_start') {
+      const block = event.content_block as Record<string, unknown> | undefined
+      if (block?.type === 'tool_use') {
+        return makeEvent(taskId, stageName, 'tool_use', {
+          toolName: block.name as string,
+        })
+      }
+      if (block?.type === 'thinking') {
+        return makeEvent(taskId, stageName, 'thinking', {
+          thinking: '',
+        })
+      }
+      return null
+    }
+
+    // Delta events — text, thinking, tool input
+    const delta = event.delta as Record<string, unknown> | undefined
+    if (!delta) return null
+
+    const deltaType = delta.type as string | undefined
+
+    if (deltaType === 'text_delta') {
+      return makeEvent(taskId, stageName, 'text', {
+        text: delta.text as string,
+      })
+    }
+
+    if (deltaType === 'thinking_delta') {
+      return makeEvent(taskId, stageName, 'thinking', {
+        thinking: delta.thinking as string,
+      })
+    }
+
+    if (deltaType === 'input_json_delta') {
+      // Tool input streaming — show as text for visibility
+      return makeEvent(taskId, stageName, 'text', {
+        text: delta.partial_json as string ?? '',
+      })
+    }
+
+    return null
+  }
+
+  if (type === 'result') {
+    // Final result — contains the complete response text and usage
+    return makeEvent(taskId, stageName, 'text', {
+      text: '', // result text already streamed via deltas
+    })
+  }
+
+  if (type === 'system') {
+    const subtype = raw.subtype as string | undefined
+    if (subtype === 'api_retry') {
+      return makeEvent(taskId, stageName, 'error', {
+        error: `API retry attempt ${raw.attempt}/${raw.max_retries} (${raw.error}) — retrying in ${raw.retry_delay_ms}ms`,
+      })
+    }
+  }
+
+  return null
 }
